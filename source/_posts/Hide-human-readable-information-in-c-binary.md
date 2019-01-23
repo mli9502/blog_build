@@ -61,4 +61,77 @@ To fix these problems, instead fo modifying the binary, we decided to encrypt al
 
 This requires a regular expression to match all string literals in source code. A base one is provided [here](https://stackoverflow.com/questions/41909225/regex-for-matching-c-string-constant).
 
-to-be-continued...
+- [ ] Need to add the working sample.
+
+There are some benifits of using this solution:
+
+* We can encode the string literal into anything we want. We don't have to make sure that the encrypted string has the same length as the origional string.
+
+* We can choose the encryption and decryption algorithm we want.
+
+One problem for this approch is that the string we matched using regex can not handle escape characters correctly. All the escape characters are being interpreted literially when doing string encryption.
+
+For example, `\n` will be treat as two characters, `\` and `n` when doing encryption, instead of being treated as ASCII character `LF` (10 in ASCII table). 
+
+As a result, when we decrypt the string, we do not get the `LF` character we want, instead, we get `\` and `n` which is not correct.
+
+To fix this, we have to post-process the string matched by our regex into a vector of characters.
+
+During post-process, we convert all the escape sequences into their corresponding ASCII characters. Then, when decrypt, we will get the correct output.
+
+Another problem is that since we have to write the encrypted characters back into our source files, some of the encrypted characters are not printable nor human readable. So, to write them to the source file, we have to write the hexidecimal representation of the characters.
+
+For example, assume `\n` is encrypted into character sequence `abc`. Then, in the source file, `\n` is then replaced with `\x61\x62\x63`.
+
+## Replace `__FILE__`, `__FUNCTION__` and `__PRETTY_FUNCTION__` 
+
+Since `__FILE__`, `__FUNCTION__` and `__PRETTY_FUNCTION__` will be replace by pre-processor to string literals, it will be added to the `.rodata` section of the binary. 
+
+To prevent this, we can write our own script to pre-process the source files to replace all these macros to empty string. 
+
+For the `__FILE__` macro, we can actually easily replace it with the actual file name string when we do our pre-process. But for `__FUNCTION__` and `__PRETTY_FUNCTION__`, it's harder for a simple pre-process script to actually figure out what they should be replaced with.
+
+This pre-process should be done before we start extracting and encrypting strings. 
+
+## Do not use `virtual` methods for classes that you want to hide name
+
+If a class contains `virtual` methods, its name will be put into `rodata._ZTS<class_name>` section in the binary. Because this information is needed for `dynamic_cast` and exceptions. 
+
+If the code base does not use RTTI features, `-fno-rtti` can be added to the compiler flag to prevent these information from being generated.
+
+Some useful links on `rodata._ZTI` and `rodata._ZTS` sections:
+
+* [https://shaharmike.com/cpp/vtable-part1/](https://shaharmike.com/cpp/vtable-part1/)
+* [ftp://gcc.gnu.org/pub/gcc/summit/2003/Getting%20the%20Best%20from%20G++.pdf](ftp://gcc.gnu.org/pub/gcc/summit/2003/Getting%20the%20Best%20from%20G++.pdf)
+* [https://stackoverflow.com/questions/49381011/what-does-ztv-zts-zti-mean-in-the-result-of-gdb-x-nfu-vtable-address](https://stackoverflow.com/questions/49381011/what-does-ztv-zts-zti-mean-in-the-result-of-gdb-x-nfu-vtable-address)
+
+## Try to remove `-rdynamic` flag
+
+If our final target is an executable, we can probably remove the `-rdynamic` flag. 
+
+This will prevent a lot of symbols from being exported.
+
+* [https://stackoverflow.com/questions/36692315/what-exactly-does-rdynamic-do-and-when-exactly-is-it-needed](https://stackoverflow.com/questions/36692315/what-exactly-does-rdynamic-do-and-when-exactly-is-it-needed)
+
+## Try adding `-fvisibility=hidden` and `--exclude-libs,ALL`
+
+`-fvisibility=hidden` makes all symbols hidden by default. 
+
+`--exclude-libs,ALL` excludes symbols in all archive libraries from automatic export.
+
+* [https://stackoverflow.com/questions/3570355/c-fvisibility-hidden-fvisibility-inlines-hidden](https://stackoverflow.com/questions/3570355/c-fvisibility-hidden-fvisibility-inlines-hidden)
+* [https://sourceware.org/binutils/docs/ld/Options.html](https://sourceware.org/binutils/docs/ld/Options.html)
+
+## Add `-DNDEBUG` as compiler flag
+
+If `-DNDEBUG` is added, all the `assert` s are stripped away from source code.  
+
+## Use `strip` command to get rid of unneeded sections in binary
+
+Use `strip` with `-s` and `--strip-unneeded` will strip away a lot of sections not needed by binary.
+
+Also, `.note.ABI-tag`, `.note.gnu.build-id` and `.comment` sections can also be removed.
+
+## Misc.
+
+* If there are still visible strings left, use `objdump` and `readelf` on the object file that the string might come from, to locate which section does the string come from. 
