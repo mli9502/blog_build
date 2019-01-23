@@ -64,3 +64,5 @@ if(it == hm.begin()) {
     cout << "The value that is strictly less than k is: " << it->first << endl;
 }
 ```
+
+Note that if we provide custom comparator to `std::map` for example, we need to make sure that the comparator returns `true` only for the cases where `lhs < rhs` for `std::lower_bound` to work correctly. This is the same for `std::upper_bound`. [ref](https://en.cppreference.com/w/cpp/algorithm/lower_bound)
